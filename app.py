@@ -32,12 +32,36 @@ def setup_page():
 def initialize_browser():
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
-        headless=False,
+        headless=True,  # Always headless on Streamlit Cloud
         args=['--no-sandbox', '--disable-dev-shm-usage']
     )
-    context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+    context = browser.new_context()
     page = context.new_page()
     return page, browser, playwright
+
+def handle_manual_login(page):
+    st.info("Since this is running on Streamlit Cloud, please enter your credentials:")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    
+    if st.button("Login"):
+        try:
+            # Navigate to login page
+            page.goto("https://www.carrier-ok.com/login")
+            
+            # Fill in credentials
+            page.fill('input[type="email"]', username)
+            page.fill('input[type="password"]', password)
+            page.click('button[type="submit"]')
+            
+            # Wait for navigation
+            page.wait_for_load_state('networkidle')
+            
+            return True
+        except Exception as e:
+            st.error(f"Login failed: {str(e)}")
+            return False
+    return False
 
 def scrape_data(page):
     data = []
