@@ -2,10 +2,12 @@ import streamlit as st
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from webdriver_manager.chrome import ChromeDriverManager
 import time
 
 def setup_page():
@@ -30,11 +32,13 @@ def create_browser():
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--headless=new")  # Updated headless mode syntax
     
-    # Uncomment below line to run in headless mode
-    # chrome_options.add_argument("--headless")
+    # Create Service object using webdriver_manager
+    service = Service(ChromeDriverManager().install())
     
-    browser = webdriver.Chrome(options=chrome_options)
+    # Create browser with service object
+    browser = webdriver.Chrome(service=service, options=chrome_options)
     return browser
 
 def scrape_data(browser, wait):
