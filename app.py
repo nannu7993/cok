@@ -2,91 +2,39 @@ import streamlit as st
 import pandas as pd
 import subprocess
 import os
-
-# Install playwright browsers if not already installed
-if not os.path.exists("/home/appuser/.cache/ms-playwright"):
-    subprocess.run(["playwright", "install", "chromium"])
-
 from playwright.sync_api import sync_playwright
 import time
 from datetime import datetime
 
 def setup_page():
-    st.set_page_config(page_title="Transport Company Scraper", layout="wide")
-    st.title("Transport Company Data Scraper")
+    st.set_page_config(page_title="Carrier Data Scraper", layout="wide")
+    st.title("Carrier Data Scraper")
     
     st.markdown("""
         <style>
         .stButton>button {
             width: 100%;
+            height: 50px;
+            margin: 10px 0;
         }
         .stProgress > div > div > div > div {
             background-color: #1f77b4;
         }
         .stAlert {
-            margin-top: 1rem;
-            margin-bottom: 1rem;
+            margin: 15px 0;
         }
         </style>
     """, unsafe_allow_html=True)
 
 def initialize_browser():
     playwright = sync_playwright().start()
-    
-    # Check if running on Streamlit Cloud
-    is_streamlit_cloud = os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud'
-    
-    if is_streamlit_cloud:
-        st.warning("Running on Streamlit Cloud - Using headless mode. For login functionality, please run this app locally.")
-        browser = playwright.chromium.launch(
-            headless=True,
-            args=['--no-sandbox', '--disable-dev-shm-usage']
-        )
-    else:
-        browser = playwright.chromium.launch(
-            headless=False,
-            args=['--no-sandbox', '--disable-dev-shm-usage']
-        )
-    
-    context = browser.new_context()
+    browser = playwright.chromium.launch(
+        headless=False,
+        args=['--no-sandbox', '--disable-dev-shm-usage']
+    )
+    context = browser.new_context(viewport={'width': 1920, 'height': 1080})
     page = context.new_page()
     return page, browser, playwright
-
-def handle_login(page, is_cloud):
-    if is_cloud:
-        st.error("Login functionality is not available on Streamlit Cloud. Please run this app locally.")
-        st.stop()
-    
-    st.subheader("Login Options")
-    login_method = st.radio("Choose login method:", ["Manual Login", "Automated Login"])
-
-    st.subheader("Login Options")
-    login_method = st.radio("Choose login method:", ["Manual Login", "Automated Login"])
-    
-    if login_method == "Manual Login":
-        st.info("Please log in through the browser window and click 'Login Complete' when done")
-        if st.button("Login Complete"):
-            return True
-    else:
-        username = st.text_input("Username", type="default")
-        password = st.text_input("Password", type="password")
-        
-        if st.button("Login"):
-            try:
-                # Wait for login form and fill credentials
-                page.wait_for_selector("input[type='email']")  # Adjust selector
-                page.fill("input[type='email']", username)     # Adjust selector
-                page.fill("input[type='password']", password)  # Adjust selector
-                page.click("button[type='submit']")           # Adjust selector
-                
-                # Wait for login to complete
-                page.wait_for_timeout(3000)
-                
-                return True
-            except Exception as e:
-                st.error(f"Login failed: {str(e)}")
-                return False
-    return False
 
 def scrape_data(page):
     data = []
@@ -149,142 +97,144 @@ def scrape_data(page):
     
     return data
 
+def handle_pagination(page, progress_bar, status_text, current_page, max_pages):
+    try:
+        # Click next page button
+        next_button = page.query_selector("button.next-page")
+        if next_button:
+            next_button.click()
+            time.sleep(2)  # Wait for page load
+            return True
+        else:
+            st.warning("No more pages available")
+            return False
+    except Exception as e:
+        st.error(f"Error during pagination: {str(e)}")
+        return False
+
+def handle_login_and_scraping(page):
+    # Initial URL
+    initial_url = "https://www.carrier-ok.com/results?entity_type=Carrier&location=Moorefield%2C+WV%2C+26836&location_radius=100&authority=common&authority_age_min=12&fleet_size_min=4&equipment=Dry+Van"
+    
+    try:
+        page.goto(initial_url)
+        st.info("Please login in the browser window. After login and setting parameters, click 'Start Scraping' below")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            return st.button("Start Scraping")
+        with col2:
+            if st.button("Cancel"):
+                st.stop()
+                
+        return False
+        
+    except Exception as e:
+        st.error(f"Error accessing website: {str(e)}")
+        return False
+
 def main():
     setup_page()
     
-    # Check if running on Streamlit Cloud
-    is_cloud = os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud'
-    
-    if is_cloud:
-        st.warning("""
-        Running on Streamlit Cloud. For login functionality, please run this app locally using:
-        1. Clone the repository
-        2. Install requirements: `pip install -r requirements.txt`
-        3. Run: `streamlit run app.py`
-        """)
-    
     if 'scraped_data' not in st.session_state:
         st.session_state.scraped_data = []
+    
+    try:
+        # Initialize browser
+        page, browser, playwright = initialize_browser()
         
-    if 'login_completed' not in st.session_state:
-        st.session_state.login_completed = False
-    
-    # Input fields
-    col1, col2 = st.columns(2)
-    with col1:
-        url = st.text_input("Enter the URL to scrape:")
-    with col2:
-        max_pages = st.number_input("Number of pages to scrape:", min_value=1, value=1)
-    
-    # Start scraping button
-    if st.button("Start Scraping"):
-        if url:
-            try:
-                page, browser, playwright = initialize_browser()
-                
-                # Navigate to URL
-                page.goto(url)
-                st.info("Accessing the website. Please wait...")
-                
-                # Handle login
-                if not st.session_state.login_completed:
-                    if handle_login(page):
-                        st.session_state.login_completed = True
-                        st.success("Login successful!")
-                
-                if st.session_state.login_completed:
-                    all_data = []
-                    current_page = 1
-                    
-                    # Progress tracking
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    while current_page <= max_pages:
-                        try:
-                            status_text.text(f"Scraping page {current_page} of {max_pages}")
-                            
-                            # Scrape current page
-                            page_data = scrape_data(page)
-                            if page_data:
-                                all_data.extend(page_data)
-                            
-                            # Update progress
-                            progress = current_page / max_pages
-                            progress_bar.progress(progress)
-                            
-                            # Click next page if not on last page
-                            if current_page < max_pages:
-                                next_button = page.query_selector("button.next-page")
-                                if next_button:
-                                    next_button.click()
-                                    page.wait_for_timeout(2000)  # Wait for page load
-                                else:
-                                    st.warning("No more pages available")
-                                    break
-                            
-                            current_page += 1
-                            
-                        except Exception as e:
-                            st.error(f"Error on page {current_page}: {str(e)}")
-                            break
-                    
-                    # Store and display results
-                    if all_data:
-                        df = pd.DataFrame(all_data)
-                        
-                        # Add timestamp
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        
-                        st.success("Scraping completed!")
-                        st.write("Scraped Data:")
-                        st.dataframe(df)
-                        
-                        # Download options
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            csv = df.to_csv(index=False).encode('utf-8')
-                            st.download_button(
-                                label="Download CSV",
-                                data=csv,
-                                file_name=f"scraped_data_{timestamp}.csv",
-                                mime="text/csv"
-                            )
-                        
-                        with col2:
-                            buffer = pd.ExcelWriter(f"scraped_data_{timestamp}.xlsx", engine='openpyxl')
-                            df.to_excel(buffer, index=False)
-                            buffer.close()
-                            
-                            with open(f"scraped_data_{timestamp}.xlsx", 'rb') as f:
-                                excel_data = f.read()
-                            
-                            st.download_button(
-                                label="Download Excel",
-                                data=excel_data,
-                                file_name=f"scraped_data_{timestamp}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                            
-                            # Clean up the temporary file
-                            os.remove(f"scraped_data_{timestamp}.xlsx")
-                    else:
-                        st.warning("No data was scraped. Please check the website structure and try again.")
-                
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
+        # Handle login and wait for user to be ready
+        if handle_login_and_scraping(page):
+            st.info("Starting to scrape data...")
             
-            finally:
-                # Clean up
-                if 'page' in locals():
-                    page.close()
-                if 'browser' in locals():
-                    browser.close()
-                if 'playwright' in locals():
-                    playwright.stop()
-        
-        else:
-            st.warning("Please enter a URL")
+            # Get number of pages to scrape
+            max_pages = st.number_input("Number of pages to scrape:", min_value=1, value=1)
+            
+            if st.button("Confirm and Continue"):
+                all_data = []
+                current_page = 1
+                
+                # Progress tracking
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                while current_page <= max_pages:
+                    try:
+                        status_text.text(f"Scraping page {current_page} of {max_pages}")
+                        
+                        # Scrape current page
+                        page_data = scrape_data(page)
+                        if page_data:
+                            all_data.extend(page_data)
+                        
+                        # Update progress
+                        progress = current_page / max_pages
+                        progress_bar.progress(progress)
+                        
+                        # Handle pagination
+                        if current_page < max_pages:
+                            if not handle_pagination(page, progress_bar, status_text, current_page, max_pages):
+                                break
+                        
+                        current_page += 1
+                        
+                    except Exception as e:
+                        st.error(f"Error on page {current_page}: {str(e)}")
+                        break
+                
+                # Process and display results
+                if all_data:
+                    df = pd.DataFrame(all_data)
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    
+                    st.success("Scraping completed!")
+                    st.write("Scraped Data:")
+                    st.dataframe(df)
+                    
+                    # Download options
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        csv = df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="Download CSV",
+                            data=csv,
+                            file_name=f"carrier_data_{timestamp}.csv",
+                            mime="text/csv"
+                        )
+                    
+                    with col2:
+                        # Create Excel file
+                        excel_file = f"carrier_data_{timestamp}.xlsx"
+                        df.to_excel(excel_file, index=False, engine='openpyxl')
+                        
+                        with open(excel_file, 'rb') as f:
+                            excel_data = f.read()
+                        
+                        st.download_button(
+                            label="Download Excel",
+                            data=excel_data,
+                            file_name=excel_file,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        
+                        # Clean up
+                        os.remove(excel_file)
+                else:
+                    st.warning("No data was scraped. Please check the website structure and try again.")
+    
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+    
+    finally:
+        # Clean up
+        if 'page' in locals():
+            page.close()
+        if 'browser' in locals():
+            browser.close()
+        if 'playwright' in locals():
+            playwright.stop()
 
 if __name__ == "__main__":
     main()
