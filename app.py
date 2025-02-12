@@ -6,6 +6,9 @@ from playwright.sync_api import sync_playwright
 import time
 from datetime import datetime
 
+if not os.path.exists("/home/appuser/.cache/ms-playwright"):
+    subprocess.run(["playwright", "install", "chromium"])
+    
 def setup_page():
     st.set_page_config(page_title="Carrier Data Scraper", layout="wide")
     st.title("Carrier Data Scraper")
