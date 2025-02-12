@@ -32,8 +32,12 @@ def setup_page():
 
 def initialize_browser():
     playwright = sync_playwright().start()
+    
+    # Check if running on Streamlit Cloud
+    is_streamlit_cloud = os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud'
+    
     browser = playwright.chromium.launch(
-        headless=True,
+        headless=is_streamlit_cloud,  # Headless only in cloud
         args=['--no-sandbox', '--disable-dev-shm-usage']
     )
     context = browser.new_context()
