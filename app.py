@@ -1,20 +1,13 @@
 import streamlit as st
 import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
-from webdriver_manager.chrome import ChromeDriverManager
+from playwright.sync_api import sync_playwright
 import time
+from datetime import datetime
 
 def setup_page():
     st.set_page_config(page_title="Transport Company Scraper", layout="wide")
     st.title("Transport Company Data Scraper")
     
-    # Add custom CSS
     st.markdown("""
         <style>
         .stButton>button {
@@ -26,65 +19,55 @@ def setup_page():
         </style>
     """, unsafe_allow_html=True)
 
-def create_browser():
-    chrome_options = Options()
-    chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--headless=new")  # Updated headless mode syntax
-    
-    # Create Service object using webdriver_manager
-    service = Service(ChromeDriverManager().install())
-    
-    # Create browser with service object
-    browser = webdriver.Chrome(service=service, options=chrome_options)
-    return browser
+def initialize_browser():
+    playwright = sync_playwright().start()
+    browser = playwright.chromium.launch(
+        headless=True,
+        args=['--no-sandbox', '--disable-dev-shm-usage']
+    )
+    context = browser.new_context()
+    page = context.new_page()
+    return page, browser, playwright
 
-def scrape_data(browser, wait):
+def scrape_data(page):
     data = []
     
     # Wait for entries to load
-    entries = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "[data-mesh-id*='comp-m1fdjkhd1']")))
+    page.wait_for_selector("[data-mesh-id*='comp-m1fdjkhd1']")
+    entries = page.query_selector_all("[data-mesh-id*='comp-m1fdjkhd1']")
     
     for entry in entries:
         try:
             # Type (Broker/Carrier)
-            company_type = entry.find_element(
-                By.CSS_SELECTOR, 
+            company_type = entry.query_selector(
                 "div[data-testid='richTextElement'] p.wixui-rich-text__text"
-            ).text
+            ).inner_text()
             
             # Company Name
-            company_name = entry.find_element(
-                By.CSS_SELECTOR, 
+            company_name = entry.query_selector(
                 "button[class*='StylableButton2545352419__root'][aria-label*='TRANSPORT']"
             ).get_attribute('aria-label')
             
             # MC#
-            mc_element = entry.find_element(
-                By.CSS_SELECTOR, 
+            mc_element = entry.query_selector(
                 "button[aria-label^='MC#'] .StylableButton2545352419__label"
             )
-            mc_number = mc_element.text.replace('MC#', '').strip()
+            mc_number = mc_element.inner_text().replace('MC#', '').strip()
             
             # DOT#
-            dot_element = entry.find_element(
-                By.CSS_SELECTOR, 
+            dot_element = entry.query_selector(
                 "button[aria-label^='DOT#'] .StylableButton2545352419__label"
             )
-            dot_number = dot_element.text.replace('DOT#', '').strip()
+            dot_number = dot_element.inner_text().replace('DOT#', '').strip()
             
             # Fleet Size
-            fleet_element = entry.find_element(
-                By.CSS_SELECTOR, 
+            fleet_element = entry.query_selector(
                 "button[aria-label^='FLEET SIZE'] .StylableButton2545352419__label"
             )
-            fleet_size = fleet_element.text.replace('FLEET SIZE:', '').strip()
+            fleet_size = fleet_element.inner_text().replace('FLEET SIZE:', '').strip()
             
             # Email
-            email_element = entry.find_element(
-                By.CSS_SELECTOR, 
+            email_element = entry.query_selector(
                 "a[href^='mailto:']"
             )
             email = email_element.get_attribute('href').replace('mailto:', '').lower()
@@ -107,7 +90,6 @@ def scrape_data(browser, wait):
 def main():
     setup_page()
     
-    # Session state for storing data
     if 'scraped_data' not in st.session_state:
         st.session_state.scraped_data = []
     
@@ -122,86 +104,96 @@ def main():
     if st.button("Start Scraping"):
         if url:
             try:
-                browser = create_browser()
-                wait = WebDriverWait(browser, 20)
+                page, browser, playwright = initialize_browser()
                 
-                # Open URL
-                browser.get(url)
+                # Navigate to URL
+                page.goto(url)
+                st.info("Accessing the website. Please wait...")
                 
-                # Wait for user login
-                st.info("Please log in to the website if required. Once ready, click 'Continue Scraping' below.")
+                # Wait for login if needed
+                st.info("If login is required, please wait for the login process...")
+                time.sleep(5)  # Give time for page to load
                 
-                if st.button("Continue Scraping"):
-                    all_data = []
-                    current_page = 1
-                    
-                    # Progress bar
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    while current_page <= max_pages:
+                all_data = []
+                current_page = 1
+                
+                # Progress tracking
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                while current_page <= max_pages:
+                    try:
                         status_text.text(f"Scraping page {current_page} of {max_pages}")
                         
-                        try:
-                            # Scrape current page
-                            page_data = scrape_data(browser, wait)
-                            all_data.extend(page_data)
-                            
-                            # Update progress
-                            progress = current_page / max_pages
-                            progress_bar.progress(progress)
-                            
-                            # Click next page if not on last page
-                            if current_page < max_pages:
-                                next_button = wait.until(EC.element_to_be_clickable(
-                                    (By.CSS_SELECTOR, "button.next-page")
-                                ))
-                                next_button.click()
-                                time.sleep(2)  # Wait for page to load
-                            
-                            current_page += 1
-                            
-                        except TimeoutException:
-                            st.warning(f"Timeout on page {current_page}. Moving to next page...")
-                            current_page += 1
-                            continue
-                    
-                    # Store data in session state
-                    st.session_state.scraped_data = all_data
-                    
-                    # Create DataFrame and display results
-                    if all_data:
-                        df = pd.DataFrame(all_data)
-                        st.success("Scraping completed!")
-                        st.write("Scraped Data:")
-                        st.dataframe(df)
+                        # Scrape current page
+                        page_data = scrape_data(page)
+                        all_data.extend(page_data)
                         
-                        # Download options
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            csv = df.to_csv(index=False)
-                            st.download_button(
-                                label="Download CSV",
-                                data=csv,
-                                file_name="scraped_data.csv",
-                                mime="text/csv"
-                            )
-                        with col2:
-                            excel_buffer = df.to_excel(index=False, engine='openpyxl')
-                            st.download_button(
-                                label="Download Excel",
-                                data=excel_buffer,
-                                file_name="scraped_data.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                    else:
-                        st.warning("No data was scraped. Please check the selectors and try again.")
+                        # Update progress
+                        progress = current_page / max_pages
+                        progress_bar.progress(progress)
+                        
+                        # Click next page if not on last page
+                        if current_page < max_pages:
+                            next_button = page.query_selector("button.next-page")
+                            if next_button:
+                                next_button.click()
+                                page.wait_for_timeout(2000)  # Wait for page load
+                            else:
+                                st.warning("No more pages available")
+                                break
+                        
+                        current_page += 1
+                        
+                    except Exception as e:
+                        st.error(f"Error on page {current_page}: {str(e)}")
+                        break
+                
+                # Store and display results
+                if all_data:
+                    df = pd.DataFrame(all_data)
+                    
+                    # Add timestamp
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    
+                    st.success("Scraping completed!")
+                    st.write("Scraped Data:")
+                    st.dataframe(df)
+                    
+                    # Download options
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        csv = df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="Download CSV",
+                            data=csv,
+                            file_name=f"scraped_data_{timestamp}.csv",
+                            mime="text/csv"
+                        )
+                    
+                    with col2:
+                        output = df.to_excel(index=False, engine='openpyxl')
+                        st.download_button(
+                            label="Download Excel",
+                            data=output,
+                            file_name=f"scraped_data_{timestamp}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                else:
+                    st.warning("No data was scraped. Please check the website structure and try again.")
                 
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
+            
             finally:
+                # Clean up
+                if 'page' in locals():
+                    page.close()
                 if 'browser' in locals():
-                    browser.quit()
+                    browser.close()
+                if 'playwright' in locals():
+                    playwright.stop()
+        
         else:
             st.warning("Please enter a URL")
 
