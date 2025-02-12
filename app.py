@@ -3,6 +3,12 @@ import pandas as pd
 import subprocess
 import os
 
+# Set page configuration at the very beginning
+st.set_page_config(page_title="Carrier Data Scraper", layout="wide")
+
+def setup_page():
+    st.title("Carrier Data Scraper")
+
 # Install playwright browsers if not already installed
 if not os.path.exists("/home/appuser/.cache/ms-playwright"):
     subprocess.run(["playwright", "install", "chromium"])
