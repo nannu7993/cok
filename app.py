@@ -92,16 +92,18 @@ def main():
     if 'browser_started' not in st.session_state:
         st.session_state.browser_started = False
     
-    if st.button("Open Browser"):
-        st.session_state.browser_started = True
-        try:
-            page, browser, playwright = initialize_browser()
-            st.session_state.page = page
-            st.session_state.browser = browser
-            st.session_state.playwright = playwright
-            
-            # Navigate to the site
-            page.goto("https://www.carrier-ok.com")
+if st.button("Open Browser"):
+    st.session_state.browser_started = True
+    try:
+        page, browser, playwright = initialize_browser()
+        st.session_state.page = page
+        st.session_state.browser = browser
+        st.session_state.playwright = playwright
+
+        # Navigate to the site
+        page.goto("https://www.carrier-ok.com")
+    except Exception as e:
+        st.error(f"Error initializing browser: {str(e)}")
             
     if st.session_state.browser_started:
         # Get number of pages to scrape
