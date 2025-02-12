@@ -1,5 +1,5 @@
-streamlit
-selenium
-pandas
-openpyxl
-webdriver_manager
+streamlit>=1.31.0
+selenium>=4.18.1
+pandas>=2.2.0
+openpyxl>=3.1.2
+webdriver-manager>=4.0.1
