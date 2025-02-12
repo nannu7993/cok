@@ -32,15 +32,34 @@ def setup_page():
 
 def initialize_browser():
     playwright = sync_playwright().start()
-    browser = playwright.chromium.launch(
-        headless=False,  # Show browser for login
-        args=['--no-sandbox', '--disable-dev-shm-usage']
-    )
+    
+    # Check if running on Streamlit Cloud
+    is_streamlit_cloud = os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud'
+    
+    if is_streamlit_cloud:
+        st.warning("Running on Streamlit Cloud - Using headless mode. For login functionality, please run this app locally.")
+        browser = playwright.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-dev-shm-usage']
+        )
+    else:
+        browser = playwright.chromium.launch(
+            headless=False,
+            args=['--no-sandbox', '--disable-dev-shm-usage']
+        )
+    
     context = browser.new_context()
     page = context.new_page()
     return page, browser, playwright
 
-def handle_login(page):
+def handle_login(page, is_cloud):
+    if is_cloud:
+        st.error("Login functionality is not available on Streamlit Cloud. Please run this app locally.")
+        st.stop()
+    
+    st.subheader("Login Options")
+    login_method = st.radio("Choose login method:", ["Manual Login", "Automated Login"])
+
     st.subheader("Login Options")
     login_method = st.radio("Choose login method:", ["Manual Login", "Automated Login"])
     
@@ -132,6 +151,17 @@ def scrape_data(page):
 
 def main():
     setup_page()
+    
+    # Check if running on Streamlit Cloud
+    is_cloud = os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud'
+    
+    if is_cloud:
+        st.warning("""
+        Running on Streamlit Cloud. For login functionality, please run this app locally using:
+        1. Clone the repository
+        2. Install requirements: `pip install -r requirements.txt`
+        3. Run: `streamlit run app.py`
+        """)
     
     if 'scraped_data' not in st.session_state:
         st.session_state.scraped_data = []
