@@ -63,6 +63,14 @@ def handle_manual_login(page):
             return False
     return False
 
+def save_cookies(context):
+    cookies = context.cookies()
+    st.session_state.cookies = cookies
+
+def load_cookies(context):
+    if 'cookies' in st.session_state:
+        context.add_cookies(st.session_state.cookies)
+
 def scrape_data(page):
     data = []
     try:
