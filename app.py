@@ -18,7 +18,7 @@ def setup_page():
 def initialize_browser():
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
-        headless=True,  # Headless mode for Streamlit Cloud
+        headless=True,
         args=['--no-sandbox', '--disable-dev-shm-usage']
     )
     context = browser.new_context()
@@ -47,7 +47,7 @@ def main():
                 st.session_state.username = username
                 st.session_state.password = password
                 st.session_state.login_state = 'credentials_entered'
-                st.experimental_rerun()
+                st.rerun()
 
     # After credentials are entered
     if st.session_state.login_state == 'credentials_entered':
@@ -73,7 +73,7 @@ def main():
             browser.close()
             playwright.stop()
             
-            st.experimental_rerun()
+            st.rerun()
 
         except Exception as e:
             st.error(f"Login failed: {str(e)}")
@@ -86,7 +86,7 @@ def main():
             if st.button("Start Scraping"):
                 st.session_state.max_pages = max_pages
                 st.session_state.scraping_started = True
-                st.experimental_rerun()
+                st.rerun()
 
         # When scraping is started
         if st.session_state.scraping_started:
@@ -173,7 +173,7 @@ def main():
         if st.button("Start Over"):
             for key in st.session_state.keys():
                 del st.session_state[key]
-            st.experimental_rerun()
+            st.rerun()
 
 if __name__ == "__main__":
     main()
