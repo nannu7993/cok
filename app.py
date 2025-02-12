@@ -32,22 +32,41 @@ def setup_page():
 
 def initialize_browser():
     playwright = sync_playwright().start()
-    
-    # Check if running on Streamlit Cloud
-    is_streamlit_cloud = os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud'
-    
     browser = playwright.chromium.launch(
-        headless=is_streamlit_cloud,  # Headless only in cloud
+        headless=False,  # Show browser for login
         args=['--no-sandbox', '--disable-dev-shm-usage']
     )
     context = browser.new_context()
     page = context.new_page()
     return page, browser, playwright
 
-def wait_for_user_login():
-    login_confirmed = st.button("I've Completed Login")
-    if login_confirmed:
-        return True
+def handle_login(page):
+    st.subheader("Login Options")
+    login_method = st.radio("Choose login method:", ["Manual Login", "Automated Login"])
+    
+    if login_method == "Manual Login":
+        st.info("Please log in through the browser window and click 'Login Complete' when done")
+        if st.button("Login Complete"):
+            return True
+    else:
+        username = st.text_input("Username", type="default")
+        password = st.text_input("Password", type="password")
+        
+        if st.button("Login"):
+            try:
+                # Wait for login form and fill credentials
+                page.wait_for_selector("input[type='email']")  # Adjust selector
+                page.fill("input[type='email']", username)     # Adjust selector
+                page.fill("input[type='password']", password)  # Adjust selector
+                page.click("button[type='submit']")           # Adjust selector
+                
+                # Wait for login to complete
+                page.wait_for_timeout(3000)
+                
+                return True
+            except Exception as e:
+                st.error(f"Login failed: {str(e)}")
+                return False
     return False
 
 def scrape_data(page):
@@ -137,11 +156,11 @@ def main():
                 page.goto(url)
                 st.info("Accessing the website. Please wait...")
                 
-                # Wait for login if needed
+                # Handle login
                 if not st.session_state.login_completed:
-                    st.info("If login is required, please complete the login and click 'I've Completed Login'")
-                    if wait_for_user_login():
+                    if handle_login(page):
                         st.session_state.login_completed = True
+                        st.success("Login successful!")
                 
                 if st.session_state.login_completed:
                     all_data = []
