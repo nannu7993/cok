@@ -25,6 +25,48 @@ def initialize_browser():
     page = context.new_page()
     return page, browser, playwright
 
+def handle_login(page, username, password):
+    try:
+        # First navigate to main page
+        st.info("Accessing main page...")
+        page.goto("https://www.carrier-ok.com", wait_until='networkidle')
+        page.wait_for_load_state('domcontentloaded')
+        
+        # Find and click login button
+        st.info("Clicking login button...")
+        login_button = page.get_by_role("button", name="Login")
+        login_button.click()
+        
+        # Wait for login form to appear
+        page.wait_for_selector('input[type="email"], input[type="text"]', timeout=5000)
+        
+        # Fill in credentials
+        st.info("Entering credentials...")
+        email_input = page.query_selector('input[type="email"], input[type="text"]')
+        password_input = page.query_selector('input[type="password"]')
+        
+        if not email_input or not password_input:
+            raise Exception("Could not find login form fields")
+            
+        email_input.fill(username)
+        password_input.fill(password)
+        
+        # Find and click submit
+        submit_button = page.query_selector('button[type="submit"]')
+        if not submit_button:
+            raise Exception("Could not find submit button")
+            
+        submit_button.click()
+        
+        # Wait for login to complete
+        page.wait_for_load_state('networkidle', timeout=10000)
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Login error: {str(e)}")
+        return False
+
 def main():
     setup_page()
     
