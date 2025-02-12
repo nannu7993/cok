@@ -17,10 +17,8 @@ def setup_page():
 
 def initialize_browser():
     playwright = sync_playwright().start()
-    browser = playwright.chromium.launch(
-        headless=False,  # Show the browser
-        args=['--start-maximized']
-    )
+    browser = playwright.chromium.launch(headless=True)
+    
     context = browser.new_context(viewport={'width': 1920, 'height': 1080})
     page = context.new_page()
     return page, browser, playwright
