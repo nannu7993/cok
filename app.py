@@ -94,29 +94,41 @@ def main():
     if 'browser_started' not in st.session_state:
         st.session_state.browser_started = False
     
-    if st.button("Open Browser"):
-        st.session_state.browser_started = True
-        try:
-            page, browser, playwright = initialize_browser()
-            st.session_state.page = page
-            st.session_state.browser = browser
-            st.session_state.playwright = playwright
-            
-            # Navigate to the site
-            page.goto("https://www.carrier-ok.com")
-            
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Open Browser"):
+            try:
+                page, browser, playwright = initialize_browser()
+                st.session_state.page = page
+                st.session_state.browser = browser
+                st.session_state.playwright = playwright
+                
+                # Navigate to the site
+                page.goto("https://www.carrier-ok.com")
+                st.session_state.browser_started = True
+                
+            except Exception as e:
+                st.error(f"Error opening browser: {str(e)}")
+    
+    with col2:
+        if st.session_state.browser_started and st.button("Reset"):
+            if 'browser' in st.session_state:
+                st.session_state.browser.close()
+            if 'playwright' in st.session_state:
+                st.session_state.playwright.stop()
+            st.session_state.browser_started = False
+            st.rerun()
+    
     if st.session_state.browser_started:
-        # Get number of pages to scrape
         max_pages = st.number_input("Number of pages to scrape:", min_value=1, value=1)
         
-        # Wait for user to be ready
         if st.button("Start Scraping"):
             try:
                 page = st.session_state.page
                 browser = st.session_state.browser
                 playwright = st.session_state.playwright
                 
-                # Start scraping
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -124,16 +136,13 @@ def main():
                 for current_page in range(1, max_pages + 1):
                     status_text.text(f"Scraping page {current_page} of {max_pages}")
                     
-                    # Scrape current page
                     page_data = scrape_data(page)
                     if page_data:
                         all_data.extend(page_data)
                     
-                    # Update progress
                     progress = current_page / max_pages
                     progress_bar.progress(progress)
                     
-                    # Handle pagination
                     if current_page < max_pages:
                         next_button = page.query_selector("button.next-page")
                         if next_button:
@@ -148,7 +157,6 @@ def main():
                     st.success("Scraping completed!")
                     st.dataframe(df)
                     
-                    # Download options
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     
                     # CSV download
@@ -175,24 +183,12 @@ def main():
                 
             except Exception as e:
                 st.error(f"Error during scraping: {str(e)}")
-            
             finally:
-                # Cleanup
                 if 'browser' in st.session_state:
                     st.session_state.browser.close()
                 if 'playwright' in st.session_state:
                     st.session_state.playwright.stop()
                 st.session_state.browser_started = False
-        
-    # Reset button
-    if st.session_state.browser_started:
-        if st.button("Reset"):
-            if 'browser' in st.session_state:
-                st.session_state.browser.close()
-            if 'playwright' in st.session_state:
-                st.session_state.playwright.stop()
-            st.session_state.browser_started = False
-            st.rerun()
 
 if __name__ == "__main__":
     main()
