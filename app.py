@@ -23,61 +23,64 @@ def initialize_browser():
 def scrape_data(page):
     data = []
     try:
-        # Wait for entries to load
-        page.wait_for_selector("[data-mesh-id*='comp-m1fdjkhd1']", timeout=10000)
-        entries = page.query_selector_all("[data-mesh-id*='comp-m1fdjkhd1']")
+        st.info("Waiting for page to load...")
+        # First wait for any content to verify page is loaded
+        page.wait_for_load_state('networkidle')
+        page.wait_for_load_state('domcontentloaded')
         
-        for entry in entries:
+        # Let's check what content is available
+        st.info("Looking for data elements...")
+        
+        # Debug: Show what elements we can find
+        company_cards = page.query_selector_all(".company-card")  # Try different selector
+        if company_cards:
+            st.success(f"Found {len(company_cards)} company cards")
+        else:
+            st.warning("No company cards found. Please verify you're on the correct page")
+            # Take screenshot for debugging
+            screenshot = page.screenshot()
+            st.image(screenshot, caption="Current page state")
+            return data
+
+        # Now try to scrape each card
+        for card in company_cards:
             try:
-                # Type (Broker/Carrier)
-                company_type = entry.query_selector(
-                    "div[data-testid='richTextElement'] p.wixui-rich-text__text"
-                ).inner_text()
+                company_data = {
+                    'Type': '',
+                    'Company Name': '',
+                    'MC#': '',
+                    'DOT#': '',
+                    'Fleet Size': '',
+                    'Email': ''
+                }
+
+                # Try to get each field with error handling
+                try:
+                    company_type = card.query_selector(".type")
+                    if company_type:
+                        company_data['Type'] = company_type.inner_text()
+                except Exception as e:
+                    st.error(f"Error getting company type: {str(e)}")
+
+                try:
+                    company_name = card.query_selector(".company-name")
+                    if company_name:
+                        company_data['Company Name'] = company_name.inner_text()
+                except Exception as e:
+                    st.error(f"Error getting company name: {str(e)}")
+
+                # Similar for other fields...
                 
-                # Company Name
-                company_name = entry.query_selector(
-                    "button[class*='StylableButton2545352419__root'][aria-label*='TRANSPORT']"
-                ).get_attribute('aria-label')
-                
-                # MC#
-                mc_element = entry.query_selector(
-                    "button[aria-label^='MC#'] .StylableButton2545352419__label"
-                )
-                mc_number = mc_element.inner_text().replace('MC#', '').strip()
-                
-                # DOT#
-                dot_element = entry.query_selector(
-                    "button[aria-label^='DOT#'] .StylableButton2545352419__label"
-                )
-                dot_number = dot_element.inner_text().replace('DOT#', '').strip()
-                
-                # Fleet Size
-                fleet_element = entry.query_selector(
-                    "button[aria-label^='FLEET SIZE'] .StylableButton2545352419__label"
-                )
-                fleet_size = fleet_element.inner_text().replace('FLEET SIZE:', '').strip()
-                
-                # Email
-                email_element = entry.query_selector(
-                    "a[href^='mailto:']"
-                )
-                email = email_element.get_attribute('href').replace('mailto:', '').lower()
-                
-                data.append({
-                    'Type': company_type,
-                    'Company Name': company_name,
-                    'MC#': mc_number,
-                    'DOT#': dot_number,
-                    'Fleet Size': fleet_size,
-                    'Email': email
-                })
+                data.append(company_data)
                 
             except Exception as e:
-                st.error(f"Error scraping entry: {str(e)}")
+                st.error(f"Error processing card: {str(e)}")
                 continue
                 
     except Exception as e:
-        st.error(f"Error waiting for page elements: {str(e)}")
+        st.error(f"Error accessing page: {str(e)}")
+        screenshot = page.screenshot()
+        st.image(screenshot, caption="Error state")
     
     return data
 
@@ -129,82 +132,98 @@ def main():
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Start Scraping"):
-                try:
-                    # Initialize new browser session
-                    page, browser, playwright = initialize_browser()
-                    
-                    # Navigate to site and handle login
-                    page.goto("https://www.carrier-ok.com")
-                    time.sleep(2)  # Wait for page load
-                    
-                    # Navigate to the desired URL
-                    page.goto(url)
-                    time.sleep(2)  # Wait for page load
-                    
-                    # Start scraping
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    all_data = []
-                    for current_page in range(1, max_pages + 1):
-                        try:
-                            status_text.text(f"Scraping page {current_page} of {max_pages}")
-                            page_data = scrape_data(page)
-                            if page_data:
-                                all_data.extend(page_data)
-                            
-                            progress = current_page / max_pages
-                            progress_bar.progress(progress)
-                            
-                            if current_page < max_pages:
-                                next_button = page.query_selector("button.next-page")
-                                if next_button:
-                                    next_button.click()
-                                    time.sleep(2)
-                                else:
-                                    st.warning("No more pages available")
-                                    break
-                        except Exception as e:
-                            st.error(f"Error on page {current_page}: {str(e)}")
-                            break
-                    
-                    # Display results
-                    if all_data:
-                        df = pd.DataFrame(all_data)
-                        st.success("Scraping completed!")
-                        st.dataframe(df)
-                        
-                        # Save options
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        
-                        # CSV
-                        csv = df.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="Download CSV",
-                            data=csv,
-                            file_name=f"carrier_data_{timestamp}.csv",
-                            mime="text/csv"
-                        )
-                        
-                        # Excel
-                        excel_file = f"carrier_data_{timestamp}.xlsx"
-                        df.to_excel(excel_file, index=False)
-                        with open(excel_file, 'rb') as f:
-                            excel_data = f.read()
-                        st.download_button(
-                            label="Download Excel",
-                            data=excel_data,
-                            file_name=excel_file,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                        os.remove(excel_file)
-                    
-                    browser.close()
-                    playwright.stop()
-                    
-                except Exception as e:
-                    st.error(f"An error occurred: {str(e)}")
+if st.button("Start Scraping"):
+    try:
+        page, browser, playwright = initialize_browser()
+        
+        # Navigate to site
+        st.info("Accessing website...")
+        page.goto("https://www.carrier-ok.com")
+        page.wait_for_load_state('networkidle')
+        
+        # Handle login
+        st.info("Logging in...")
+        login_button = page.query_selector('button[data-testid="buttonElement"]')
+        if login_button:
+            login_button.click()
+            page.wait_for_selector('input[name="email"]')
+            page.fill('input[name="email"]', st.session_state.username)
+            page.fill('input[name="password"]', st.session_state.password)
+            page.click('button[data-testid="buttonElement"] span:has-text("Log In")')
+            page.wait_for_load_state('networkidle')
+        
+        # Navigate to results page
+        st.info("Navigating to results page...")
+        page.goto(url)
+        page.wait_for_load_state('networkidle')
+        
+        # Take screenshot to verify page state
+        screenshot = page.screenshot()
+        st.image(screenshot, caption="Page before scraping")
+        
+        # Start scraping
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        all_data = []
+        for current_page in range(1, max_pages + 1):
+            try:
+                status_text.text(f"Scraping page {current_page} of {max_pages}")
+                page_data = scrape_data(page)
+                if page_data:
+                    all_data.extend(page_data)
+                
+                progress = current_page / max_pages
+                progress_bar.progress(progress)
+                
+                if current_page < max_pages:
+                    next_button = page.query_selector("button.next-page")
+                    if next_button:
+                        next_button.click()
+                        time.sleep(2)
+                    else:
+                        st.warning("No more pages available")
+                        break
+            except Exception as e:
+                st.error(f"Error on page {current_page}: {str(e)}")
+                break
+        
+        # Display results
+        if all_data:
+            df = pd.DataFrame(all_data)
+            st.success("Scraping completed!")
+            st.dataframe(df)
+            
+            # Save options
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # CSV
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name=f"carrier_data_{timestamp}.csv",
+                mime="text/csv"
+            )
+            
+            # Excel
+            excel_file = f"carrier_data_{timestamp}.xlsx"
+            df.to_excel(excel_file, index=False)
+            with open(excel_file, 'rb') as f:
+                excel_data = f.read()
+            st.download_button(
+                label="Download Excel",
+                data=excel_data,
+                file_name=excel_file,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            os.remove(excel_file)
+        
+        browser.close()
+        playwright.stop()
+        
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
         
         with col2:
             if st.button("Reset"):
