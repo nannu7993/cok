@@ -18,12 +18,16 @@ def setup_page():
 def initialize_browser():
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
-        headless=False,  # Show the browser
-        args=['--start-maximized']
+        headless=True,  # Change to headless mode
+        args=['--no-sandbox', '--disable-dev-shm-usage']
     )
-    context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+    context = browser.new_context()
     page = context.new_page()
     return page, browser, playwright
+
+def capture_screenshot(page):
+    screenshot = page.screenshot()
+    st.image(screenshot, caption="Current page view", use_column_width=True)
 
 def scrape_data(page):
     data = []
